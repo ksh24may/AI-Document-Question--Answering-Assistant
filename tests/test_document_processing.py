@@ -1,7 +1,7 @@
 from document_processing.pdf_loader import extract_text_from_pdf
 from document_processing.text_cleaner import clean_text
 from document_processing.chunker import chunk_text
-from document_processing.processor import process_pdf
+from document_processing.processor import process_pdf, process_documents
 
 
 def test_clean_text():
@@ -44,3 +44,22 @@ def test_process_pdf():
     assert "document" in first_chunk
     assert "page" in first_chunk
     assert "chunk_id" in first_chunk
+
+
+def test_process_multiple_documents():
+    pdf_files = [
+        "test_data/sample.pdf",
+        "test_data/sample2.pdf"
+    ]
+
+    chunks = process_documents(pdf_files)
+
+    assert len(chunks) > 0
+
+    documents = {
+        chunk["document"]
+        for chunk in chunks
+    }
+
+    assert "sample.pdf" in documents
+    assert "sample2.pdf" in documents
