@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pymupdf
 
 
@@ -6,18 +8,30 @@ def extract_text_from_pdf(file_path):
     Extract text from a PDF page by page.
     """
 
-    document = pymupdf.open(file_path)
+    path = Path(file_path)
+
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"PDF not found: {path}"
+        )
+
+    if path.suffix.lower() != ".pdf":
+        raise ValueError(
+            f"Not a PDF file: {path}"
+        )
 
     pages = []
 
-    for page_number, page in enumerate(document, start=1):
-        text = page.get_text()
+    with pymupdf.open(path) as document:
 
-        pages.append({
-            "page": page_number,
-            "text": text
-        })
+        for page_number, page in enumerate(
+            document,
+            start=1
+        ):
 
-    document.close()
+            pages.append({
+                "page": page_number,
+                "text": page.get_text()
+            })
 
     return pages

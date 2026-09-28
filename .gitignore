@@ -1,25 +1,44 @@
-# Python
-__pycache__/
-*.py[cod]
-
-# Virtual environments
-venv/
+# Python virtual environment
 .venv/
+venv/
 env/
 
-# Environment variables / API keys
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest cache
+.pytest_cache/
+
+# Environment variables / secrets
 .env
 .env.*
 
-# Jupyter
-.ipynb_checkpoints/
-
-# VS Code
+# IDE files
 .vscode/
-
-# Logs
-*.log
+.idea/
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# Build / distribution files
+build/
+dist/
+*.egg-info/
+
+# Coverage reports
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
