@@ -9,13 +9,17 @@ class RAGPipeline:
         self.llm = GeminiLLM()
 
     def answer(self, question, top_k=5):
+
         retrieved_chunks = self.retriever.retrieve(
             question,
             top_k=top_k
         )
 
         if not retrieved_chunks:
-            return "I could not find the answer in the provided documents."
+            return (
+                "I could not find the answer "
+                "in the provided documents."
+            )
 
         prompt = build_prompt(
             question,
