@@ -11,11 +11,14 @@ class GeminiLLM:
                 "GEMINI_API_KEY environment variable is not set."
             )
 
-        self.client = genai.Client(api_key=api_key)
+        self.client = genai.Client(
+            api_key=api_key
+        )
 
     def generate(self, prompt):
+
         response = self.client.models.generate_content(
-            model="gemini-3.1-flash-lite",
+            model="gemini-3.8-flash",
             contents=prompt
         )
 

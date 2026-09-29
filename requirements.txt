@@ -3,3 +3,7 @@ pytest>=7.0
 sentence-transformers
 faiss-cpu
 numpy
+Flask
+flask-cors
+google-genai
+Werkzeug
