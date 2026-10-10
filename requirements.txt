@@ -3,3 +3,5 @@ pytest>=7.0
 sentence-transformers
 faiss-cpu
 numpy
+pinecone
+python-dotenv
