@@ -15,9 +15,7 @@ class PineconeVectorStore:
 
     def __init__(self, api_key=None, index_name=None):
         self.api_key = api_key or os.getenv("PINECONE_API_KEY")
-        self.index_name = (
-            index_name or os.getenv("PINECONE_INDEX_NAME")
-        )
+        self.index_name = index_name or os.getenv("PINECONE_INDEX_NAME")
 
         if not self.api_key:
             raise ValueError("PINECONE_API_KEY is missing")
@@ -34,12 +32,18 @@ class PineconeVectorStore:
         value = f"{user_id}:{document_id}:{chunk_id}"
         return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def _to_list(embedding):
+        """Convert NumPy arrays or other iterable embeddings to lists."""
+        if hasattr(embedding, "tolist"):
+            return embedding.tolist()
+        return list(embedding)
+
     def index_chunks(self, chunks, user_id, document_id):
         """
         Embed processed PDF chunks and store them in Pinecone.
 
-        Each chunk should contain:
-        text, document, page, and chunk_id.
+        Each chunk should contain text, document, page, and chunk_id.
         Returns the number of indexed chunks.
         """
         if not user_id or not document_id:
@@ -62,6 +66,9 @@ class PineconeVectorStore:
         texts = [chunk["text"] for chunk in valid_chunks]
         embeddings = generate_embeddings(texts)
 
+        if len(embeddings) != len(valid_chunks):
+            raise ValueError("Embedding count must match chunk count")
+
         vectors = []
 
         for chunk, embedding in zip(valid_chunks, embeddings):
@@ -77,30 +84,22 @@ class PineconeVectorStore:
             }
 
             vectors.append({
-                "id": self._vector_id(
-                    user_id, document_id, chunk_id
-                ),
-                "values": embedding.tolist(),
+                "id": self._vector_id(user_id, document_id, chunk_id),
+                "values": self._to_list(embedding),
                 "metadata": metadata,
             })
 
-        # Upsert vectors in batches.
+        # Upsert vectors in batches of 100.
         for start in range(0, len(vectors), 100):
             batch = vectors[start:start + 100]
             self.index.upsert(vectors=batch)
 
         return len(vectors)
 
-    def search(
-        self,
-        query,
-        user_id,
-        top_k=5,
-        document_id=None,
-    ):
+    def search(self, query, user_id, top_k=5, document_id=None):
         """
-        Retrieve the most relevant chunks for a user's question.
-        Optionally restrict search to one document.
+        Retrieve relevant chunks for a user.
+        Optionally restrict the search to one document.
         """
         if not isinstance(query, str) or not query.strip():
             raise ValueError("query cannot be empty")
@@ -108,10 +107,15 @@ class PineconeVectorStore:
         if not user_id:
             raise ValueError("user_id is required")
 
-        if not isinstance(top_k, int) or top_k < 1:
+        if (
+            not isinstance(top_k, int)
+            or isinstance(top_k, bool)
+            or top_k < 1
+        ):
             raise ValueError("top_k must be a positive integer")
 
         query_embedding = generate_embeddings([query])[0]
+        query_values = self._to_list(query_embedding)
 
         metadata_filter = {
             "user_id": {"$eq": str(user_id)}
@@ -123,7 +127,7 @@ class PineconeVectorStore:
             }
 
         response = self.index.query(
-            vector=query_embedding.tolist(),
+            vector=query_values,
             top_k=top_k,
             filter=metadata_filter,
             include_metadata=True,
@@ -142,9 +146,7 @@ class PineconeVectorStore:
         return results
 
     def delete_document(self, document_id, user_id):
-        """
-        Delete all vectors belonging to a specific user's document.
-        """
+        """Delete all vectors belonging to a user's document."""
         if not user_id or not document_id:
             raise ValueError(
                 "user_id and document_id are required"
