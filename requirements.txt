@@ -3,5 +3,11 @@ pytest>=7.0
 sentence-transformers
 faiss-cpu
 numpy
-pinecone
+Flask
+flask-cors
+google-genai
+Werkzeug
+pymongo
 python-dotenv
+pinecone
+
