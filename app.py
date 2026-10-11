@@ -1,9 +1,11 @@
 import os
 from pathlib import Path
 
+from chat_history import chat_bp
 from dotenv import load_dotenv
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session
+from auth import auth_bp, login_required
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
@@ -46,9 +48,22 @@ else:
 # FLASK APPLICATION
 # =========================================================
 
+
 app = Flask(__name__)
 
-CORS(app)
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
+
+if not app.config["SECRET_KEY"]:
+    raise RuntimeError("SECRET_KEY is missing from .env")
+
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+CORS(app, supports_credentials=True)
+
+app.register_blueprint(auth_bp)
+app.register_blueprint(chat_bp)
+
 
 
 # =========================================================
@@ -112,19 +127,17 @@ def allowed_file(filename):
 EMBEDDING_DIMENSION = 384
 
 
-vector_store = VectorStore(
-    dimension=EMBEDDING_DIMENSION
-)
+user_vector_stores = {}
+user_documents = {}
 
 
-# =========================================================
-# CURRENT DOCUMENT INFORMATION
-# =========================================================
+def get_user_vector_store(user_id):
+    if user_id not in user_vector_stores:
+        user_vector_stores[user_id] = VectorStore(
+            dimension=EMBEDDING_DIMENSION
+        )
 
-current_document = {
-    "filename": None,
-    "chunks": 0
-}
+    return user_vector_stores[user_id]
 
 
 # =========================================================
@@ -151,519 +164,141 @@ def home():
     methods=["GET"]
 )
 def health():
-
     return jsonify({
-
         "status": "healthy",
-
-        "message":
-            "AI Document Q&A Assistant is running.",
-
-        "document_loaded":
-            len(vector_store.metadata) > 0
-
+        "message": "AI Document Q&A Assistant is running."
     }), 200
+
+
 
 
 # =========================================================
 # UPLOAD DOCUMENT
 # =========================================================
 
-@app.route(
-    "/upload",
-    methods=["POST"]
-)
+@app.route("/upload", methods=["POST"])
+@login_required
 def upload_document():
 
-    # -----------------------------------------------------
-    # Check file
-    # -----------------------------------------------------
+    user_id = session["user_id"]
 
     if "file" not in request.files:
-
         return jsonify({
-
             "success": False,
-
-            "error":
-                "No file provided."
-
+            "error": "No file provided."
         }), 400
-
-
-    # -----------------------------------------------------
-    # Get file
-    # -----------------------------------------------------
 
     file = request.files["file"]
 
-
-    # -----------------------------------------------------
-    # Check filename
-    # -----------------------------------------------------
-
     if not file.filename:
-
         return jsonify({
-
             "success": False,
-
-            "error":
-                "No file selected."
-
+            "error": "No file selected."
         }), 400
 
-
-    # -----------------------------------------------------
-    # Check extension
-    # -----------------------------------------------------
-
-    if not allowed_file(
-        file.filename
-    ):
-
+    if not allowed_file(file.filename):
         return jsonify({
-
             "success": False,
-
-            "error":
-                "Only PDF files are allowed."
-
+            "error": "Only PDF files are allowed."
         }), 400
 
-
-    # -----------------------------------------------------
-    # Secure filename
-    # -----------------------------------------------------
-
-    filename = secure_filename(
-        file.filename
-    )
-
+    filename = secure_filename(file.filename)
 
     if not filename:
-
         return jsonify({
-
             "success": False,
-
-            "error":
-                "Invalid filename."
-
+            "error": "Invalid filename."
         }), 400
 
+    user_folder = UPLOAD_FOLDER / user_id
+    user_folder.mkdir(parents=True, exist_ok=True)
 
-    # -----------------------------------------------------
-    # File path
-    # -----------------------------------------------------
-
-    file_path = (
-        UPLOAD_FOLDER /
-        filename
-    )
-
+    file_path = user_folder / filename
 
     try:
+        file.save(str(file_path))
 
-        print()
-        print("=" * 65)
-        print("DOCUMENT UPLOAD")
-        print("=" * 65)
-
-        print(
-            f"File: {filename}"
-        )
-
-
-        # -------------------------------------------------
-        # Save file
-        # -------------------------------------------------
-
-        file.save(
-            str(file_path)
-        )
-
-        print(
-            "✓ PDF saved"
-        )
-
-
-        # -------------------------------------------------
-        # Process PDF
-        # -------------------------------------------------
-
-        print(
-            "→ Extracting text..."
-        )
-
-        chunks = process_pdf(
-            str(file_path)
-        )
-
-
-        # -------------------------------------------------
-        # Check chunks
-        # -------------------------------------------------
+        chunks = process_pdf(str(file_path))
 
         if not chunks:
-
+            file_path.unlink(missing_ok=True)
             return jsonify({
-
                 "success": False,
-
-                "error":
-                    "No readable text found in PDF."
-
+                "error": "No readable text found in PDF."
             }), 400
 
+        texts = [chunk["text"] for chunk in chunks]
+        embeddings = generate_embeddings(texts)
 
-        print(
-            f"✓ {len(chunks)} chunks created"
-        )
+        store = VectorStore(dimension=EMBEDDING_DIMENSION)
+        store.add(embeddings, chunks)
 
-
-        # -------------------------------------------------
-        # Extract text
-        # -------------------------------------------------
-
-        texts = [
-            chunk["text"]
-            for chunk in chunks
-        ]
-
-
-        # -------------------------------------------------
-        # Generate embeddings
-        # -------------------------------------------------
-
-        print(
-            "→ Generating embeddings..."
-        )
-
-        embeddings = generate_embeddings(
-            texts
-        )
-
-
-        print(
-            "✓ Embeddings generated"
-        )
-
-
-        # -------------------------------------------------
-        # Clear previous document
-        # -------------------------------------------------
-
-        print(
-            "→ Preparing vector store..."
-        )
-
-
-        # Your VectorStore may expose either
-        # reset() or clear().
-
-        if hasattr(
-            vector_store,
-            "reset"
-        ):
-
-            vector_store.reset()
-
-            print(
-                "✓ Previous document cleared"
-            )
-
-        elif hasattr(
-            vector_store,
-            "clear"
-        ):
-
-            vector_store.clear()
-
-            print(
-                "✓ Previous document cleared"
-            )
-
-        else:
-
-            print(
-                "ℹ VectorStore has no reset/clear method."
-            )
-
-
-        # -------------------------------------------------
-        # Add embeddings
-        # -------------------------------------------------
-
-        print(
-            "→ Adding embeddings to FAISS..."
-        )
-
-        vector_store.add(
-            embeddings,
-            chunks
-        )
-
-
-        print(
-            "✓ Document indexed successfully"
-        )
-
-
-        # -------------------------------------------------
-        # Update current document
-        # -------------------------------------------------
-
-        current_document[
-            "filename"
-        ] = filename
-
-        current_document[
-            "chunks"
-        ] = len(chunks)
-
-
-        print("=" * 65)
-        print(
-            "DOCUMENT READY"
-        )
-        print("=" * 65)
-        print()
-
-
-        # -------------------------------------------------
-        # Response
-        # -------------------------------------------------
+        user_vector_stores[user_id] = store
+        user_documents[user_id] = {
+            "filename": filename,
+            "chunks": len(chunks)
+        }
 
         return jsonify({
-
             "success": True,
-
-            "message":
-                "Document uploaded and processed successfully.",
-
-            "filename":
-                filename,
-
-            "chunks_created":
-                len(chunks)
-
+            "message": "Document uploaded and processed successfully.",
+            "filename": filename,
+            "chunks_created": len(chunks)
         }), 200
 
-
-    except Exception as e:
-
-        print()
-        print("=" * 65)
-        print("UPLOAD ERROR")
-        print("=" * 65)
-
-        print(
-            str(e)
-        )
-
-        print("=" * 65)
-        print()
-
+    except Exception:
+        app.logger.exception("Document upload failed")
 
         return jsonify({
-
             "success": False,
-
-            "error":
-                f"Failed to process document: {str(e)}"
-
+            "error": "Failed to process document."
         }), 500
 
 
-# =========================================================
-# ASK QUESTION
-# =========================================================
 
-@app.route(
-    "/ask",
-    methods=["POST"]
-)
+@app.route("/ask", methods=["POST"])
+@login_required
 def ask_question():
+    user_id = session["user_id"]
 
-    # -----------------------------------------------------
-    # Read JSON
-    # -----------------------------------------------------
+    data = request.get_json(silent=True) or {}
+    question = data.get("question", "")
 
-    data = request.get_json(
-        silent=True
-    )
-
-
-    if not data:
-
+    if not isinstance(question, str) or not question.strip():
         return jsonify({
-
             "success": False,
-
-            "error":
-                "Request body is required."
-
+            "error": "A valid question is required."
         }), 400
-
-
-    # -----------------------------------------------------
-    # Get question
-    # -----------------------------------------------------
-
-    question = data.get(
-        "question",
-        ""
-    )
-
-
-    # -----------------------------------------------------
-    # Validate type
-    # -----------------------------------------------------
-
-    if not isinstance(
-        question,
-        str
-    ):
-
-        return jsonify({
-
-            "success": False,
-
-            "error":
-                "Question must be a string."
-
-        }), 400
-
 
     question = question.strip()
 
+    store = user_vector_stores.get(user_id)
+    document = user_documents.get(user_id)
 
-    # -----------------------------------------------------
-    # Validate question
-    # -----------------------------------------------------
-
-    if not question:
-
+    if store is None or not store.metadata or document is None:
         return jsonify({
-
             "success": False,
-
-            "error":
-                "Question is required."
-
+            "error": "Please upload your PDF first."
         }), 400
-
-
-    # -----------------------------------------------------
-    # Check document
-    # -----------------------------------------------------
-
-    if len(
-        vector_store.metadata
-    ) == 0:
-
-        return jsonify({
-
-            "success": False,
-
-            "error":
-                "Please upload a document first."
-
-        }), 400
-
 
     try:
-
-        print()
-        print("=" * 65)
-        print("QUESTION")
-        print("=" * 65)
-
-        print(
-            question
-        )
-
-
-        # -------------------------------------------------
-        # Create RAG pipeline
-        # -------------------------------------------------
-
-        rag_pipeline = RAGPipeline(
-            vector_store
-        )
-
-
-        # -------------------------------------------------
-        # Retrieve + Generate
-        # -------------------------------------------------
-
-        print(
-            "→ Running RAG pipeline..."
-        )
-
-
-        answer = rag_pipeline.answer(
-            question,
-            top_k=5
-        )
-
-
-        print(
-            "✓ Answer generated"
-        )
-
-
-        print("=" * 65)
-        print()
-
-
-        # -------------------------------------------------
-        # Response
-        # -------------------------------------------------
+        rag_pipeline = RAGPipeline(store)
+        answer = rag_pipeline.answer(question, top_k=5)
 
         return jsonify({
-
             "success": True,
-
-            "question":
-                question,
-
-            "answer":
-                answer,
-
-            "filename":
-                current_document[
-                    "filename"
-                ]
-
+            "question": question,
+            "answer": answer,
+            "filename": document["filename"]
         }), 200
 
-
-    except Exception as e:
-
-        print()
-        print("=" * 65)
-        print("QUESTION ERROR")
-        print("=" * 65)
-
-        print(
-            str(e)
-        )
-
-        print("=" * 65)
-        print()
-
+    except Exception:
+        app.logger.exception("Question answering failed")
 
         return jsonify({
-
             "success": False,
-
-            "error":
-                f"Failed to generate answer: {str(e)}"
-
+            "error": "Failed to generate an answer."
         }), 500
-
 
 # =========================================================
 # FILE TOO LARGE
