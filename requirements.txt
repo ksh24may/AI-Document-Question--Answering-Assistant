@@ -9,3 +9,5 @@ google-genai
 Werkzeug
 pymongo
 python-dotenv
+pinecone
+
