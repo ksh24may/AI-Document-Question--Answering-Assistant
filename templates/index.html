@@ -1,697 +1,372 @@
+
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
-
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
-
-    <meta name="description"
-          content="AI Document Q&A Assistant - Upload documents and ask intelligent questions.">
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="DocuMind AI - Upload PDFs and ask questions using AI.">
     <title>DocuMind AI | Document Q&A Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
-    <!-- Google Font -->
-    <link rel="preconnect"
-          href="https://fonts.googleapis.com">
+    <style>
+        [hidden] { display: none !important; }
 
-    <link rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossorigin>
+        .auth-screen {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+        }
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-          rel="stylesheet">
+        .auth-card {
+            width: 100%;
+            max-width: 440px;
+            padding: 32px;
+            border-radius: 20px;
+            background: rgba(20, 25, 45, 0.94);
+            border: 1px solid rgba(255,255,255,0.12);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+            color: #fff;
+        }
 
-    <!-- Main CSS -->
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='style.css') }}">
-
+        .auth-card h1 { margin-bottom: 8px; }
+        .auth-card p { color: #b8c0d8; }
+        .auth-card label {
+            display: block;
+            margin: 16px 0 7px;
+            font-weight: 600;
+        }
+        .auth-card input {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 9px;
+            border: 1px solid #424b67;
+            background: #11172b;
+            color: #fff;
+            font: inherit;
+        }
+        .auth-card input:focus {
+            outline: 2px solid #8b80ff;
+        }
+        .auth-card button { margin-top: 20px; }
+        .auth-switch {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .auth-switch button {
+            margin: 0;
+            padding: 0;
+            border: 0;
+            background: none;
+            color: #a99fff;
+            font: inherit;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        #authStatus {
+            margin-top: 14px;
+            min-height: 22px;
+            overflow-wrap: anywhere;
+        }
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        #loggedInName { color: #c5c9e0; }
+        .logout-button {
+            padding: 9px 14px;
+            border: 1px solid rgba(255,255,255,.2);
+            border-radius: 8px;
+            color: inherit;
+            background: transparent;
+            cursor: pointer;
+        }
+    </style>
 </head>
 
-
 <body>
-
-    <!-- =========================================
-         Background Decoration
-         ========================================= -->
-
     <div class="background-glow glow-one"></div>
     <div class="background-glow glow-two"></div>
 
-
-    <!-- =========================================
-         Main Application
-         ========================================= -->
-
-    <div class="app-shell">
-
-
-        <!-- =====================================
-             Sidebar
-             ===================================== -->
-
-        <aside class="sidebar">
-
+    <!-- LOGIN / REGISTRATION -->
+    <section id="authScreen" class="auth-screen">
+        <div class="auth-card">
             <div class="brand">
+                <div class="brand-icon">✦</div>
+                <div>
+                    <h2>DocuMind AI</h2>
+                    <span>AI Document Assistant</span>
+                </div>
+            </div>
 
-                <div class="brand-icon">
-                    ✦
+            <h1 id="authTitle" style="margin-top:28px;">Welcome back</h1>
+            <p id="authDescription">Sign in to upload documents and ask questions.</p>
+
+            <form id="authForm">
+                <div id="nameField" hidden>
+                    <label for="authName">Full name</label>
+                    <input id="authName" name="name" type="text"
+                           autocomplete="name" placeholder="Your name">
                 </div>
 
+                <label for="authEmail">Email address</label>
+                <input id="authEmail" name="email" type="email"
+                       autocomplete="email" required placeholder="you@example.com">
+
+                <label for="authPassword">Password</label>
+                <input id="authPassword" name="password" type="password"
+                       autocomplete="current-password" required
+                       minlength="8" placeholder="At least 8 characters">
+
+                <button id="authSubmit" class="primary-button full-button" type="submit">
+                    Log in
+                </button>
+            </form>
+
+            <div id="authStatus" role="status" aria-live="polite"></div>
+
+            <p class="auth-switch">
+                <span id="authSwitchText">Don't have an account?</span>
+                <button id="authSwitch" type="button">Register</button>
+            </p>
+        </div>
+    </section>
+
+    <!-- MAIN APPLICATION: shown after successful login -->
+    <div id="appShell" class="app-shell" hidden>
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">✦</div>
                 <div>
                     <h2>DocuMind</h2>
                     <span>AI Document Assistant</span>
                 </div>
-
             </div>
-
 
             <div class="sidebar-divider"></div>
 
-
             <div class="sidebar-section">
-
-                <p class="sidebar-label">
-                    WORKSPACE
-                </p>
-
+                <p class="sidebar-label">WORKSPACE</p>
                 <div class="sidebar-item active">
-
-                    <span class="sidebar-item-icon">
-                        📄
-                    </span>
-
-                    <span>
-                        Document Q&A
-                    </span>
-
+                    <span class="sidebar-item-icon">📄</span>
+                    <span>Document Q&amp;A</span>
                 </div>
-
             </div>
-
 
             <div class="sidebar-section">
-
-                <p class="sidebar-label">
-                    HOW IT WORKS
-                </p>
-
+                <p class="sidebar-label">HOW IT WORKS</p>
                 <div class="workflow-step">
-
-                    <div class="step-number">
-                        1
-                    </div>
-
-                    <div>
-                        <strong>Upload</strong>
-                        <small>Select a PDF document</small>
-                    </div>
-
+                    <div class="step-number">1</div>
+                    <div><strong>Upload</strong><small>Select a PDF document</small></div>
                 </div>
-
-
                 <div class="workflow-line"></div>
-
-
                 <div class="workflow-step">
-
-                    <div class="step-number">
-                        2
-                    </div>
-
-                    <div>
-                        <strong>Ask</strong>
-                        <small>Ask questions naturally</small>
-                    </div>
-
+                    <div class="step-number">2</div>
+                    <div><strong>Ask</strong><small>Ask questions naturally</small></div>
                 </div>
-
-
                 <div class="workflow-line"></div>
-
-
                 <div class="workflow-step">
-
-                    <div class="step-number">
-                        3
-                    </div>
-
-                    <div>
-                        <strong>Understand</strong>
-                        <small>Get AI-powered answers</small>
-                    </div>
-
+                    <div class="step-number">3</div>
+                    <div><strong>Understand</strong><small>Get AI-powered answers</small></div>
                 </div>
-
             </div>
-
 
             <div class="sidebar-bottom">
-
                 <div class="ai-status">
-
                     <span class="status-dot"></span>
-
                     <div>
-                        <strong>AI System Online</strong>
+                        <strong>AI System</strong>
                         <small>Ready to analyze documents</small>
                     </div>
-
                 </div>
-
             </div>
-
         </aside>
 
-
-
-        <!-- =====================================
-             Main Content
-             ===================================== -->
-
         <main class="main-content">
-
-
-            <!-- =================================
-                 Top Bar
-                 ================================= -->
-
             <header class="topbar">
-
                 <div>
-
-                    <p class="eyebrow">
-                        INTELLIGENT DOCUMENT ANALYSIS
-                    </p>
-
-                    <h1>
-                        Ask your documents.
-                    </h1>
-
+                    <p class="eyebrow">INTELLIGENT DOCUMENT ANALYSIS</p>
+                    <h1>Ask your documents.</h1>
                     <p class="topbar-description">
-                        Upload a PDF and let AI help you understand,
-                        summarize and explore its content.
+                        Upload a PDF and let AI help you understand its content.
                     </p>
-
                 </div>
 
-
-                <div class="connection-status">
-
-                    <span class="status-dot"></span>
-
-                    <span>
-                        System Ready
-                    </span>
-
+                <div class="topbar-actions">
+                    <span id="loggedInName"></span>
+                    <button id="logoutButton" class="logout-button" type="button">
+                        Log out
+                    </button>
                 </div>
-
             </header>
 
-
-
-            <!-- =================================
-                 Main Grid
-                 ================================= -->
-
             <div class="dashboard-grid">
-
-
-                <!-- =================================
-                     Upload Card
-                     ================================= -->
-
+                <!-- PDF UPLOAD -->
                 <section class="glass-card upload-card">
-
                     <div class="card-heading">
-
-                        <div class="heading-icon purple">
-                            ↑
-                        </div>
-
+                        <div class="heading-icon purple">↑</div>
                         <div>
-
-                            <h2>
-                                Upload Document
-                            </h2>
-
-                            <p>
-                                Add a PDF to start asking questions.
-                            </p>
-
+                            <h2>Upload Document</h2>
+                            <p>Add a PDF to start asking questions.</p>
                         </div>
-
                     </div>
 
-
-                    <!-- Drop Zone -->
-
-                    <div id="dropZone"
-                         class="drop-zone">
-
-                        <input
-                            type="file"
-                            id="pdfFile"
-                            accept=".pdf,application/pdf"
-                            hidden
-                        >
-
+                    <div id="dropZone" class="drop-zone">
+                        <input type="file" id="pdfFile"
+                               accept=".pdf,application/pdf" hidden>
 
                         <div class="upload-icon-wrapper">
-
-                            <div class="upload-icon">
-                                ↑
-                            </div>
-
+                            <div class="upload-icon">↑</div>
                         </div>
+                        <h3>Drop your PDF here</h3>
+                        <p>or click below to browse from your computer</p>
 
-
-                        <h3>
-                            Drop your PDF here
-                        </h3>
-
-                        <p>
-                            or click below to browse from your computer
-                        </p>
-
-
-                        <button
-                            id="browseButton"
-                            class="secondary-button"
-                            type="button">
-
+                        <button id="browseButton" class="secondary-button" type="button">
                             Browse PDF
-
                         </button>
-
 
                         <div class="file-limit">
-
                             <span>PDF only</span>
-
                             <span>•</span>
-
-                            <span>Maximum 20 MB</span>
-
+                            <span>Maximum 20 MB • 50 pages</span>
                         </div>
-
                     </div>
 
-
-                    <!-- Selected File -->
-
-                    <div id="selectedFile"
-                         class="selected-file hidden">
-
-                        <div class="file-icon">
-                            PDF
-                        </div>
-
+                    <div id="selectedFile" class="selected-file hidden">
+                        <div class="file-icon">PDF</div>
                         <div class="file-info">
-
-                            <strong id="fileName">
-                                document.pdf
-                            </strong>
-
-                            <span id="fileSize">
-                                0 KB
-                            </span>
-
+                            <strong id="fileName">document.pdf</strong>
+                            <span id="fileSize">0 KB</span>
                         </div>
-
-                        <button
-                            id="removeFileButton"
-                            class="icon-button"
-                            type="button"
-                            title="Remove file">
-
-                            ×
-
-                        </button>
-
+                        <button id="removeFileButton" class="icon-button"
+                                type="button" title="Remove file">×</button>
                     </div>
 
-
-                    <!-- Upload Button -->
-
-                    <button
-                        id="uploadButton"
-                        class="primary-button full-button"
-                        type="button"
-                        disabled>
-
-                        <span class="button-icon">
-                            ↑
-                        </span>
-
-                        Upload & Analyze
-
+                    <button id="uploadButton"
+                            class="primary-button full-button"
+                            type="button" disabled>
+                        <span class="button-icon">↑</span>
+                        Upload &amp; Analyze
                     </button>
 
-
-                    <!-- Upload Progress -->
-
-                    <div id="uploadProgress"
-                         class="progress-container hidden">
-
+                    <div id="uploadProgress" class="progress-container hidden">
                         <div class="progress-header">
-
-                            <span>
-                                Processing document...
-                            </span>
-
-                            <span>
-                                AI
-                            </span>
-
+                            <span>Processing document...</span><span>AI</span>
                         </div>
-
-                        <div class="progress-bar">
-
-                            <div class="progress-fill"></div>
-
-                        </div>
-
-                        <p>
-                            Extracting text, creating embeddings
-                            and preparing your document.
-                        </p>
-
+                        <div class="progress-bar"><div class="progress-fill"></div></div>
+                        <p>Extracting text and preparing your document.</p>
                     </div>
 
+                    <div id="uploadStatus" class="status-message"
+                         role="status" aria-live="polite"></div>
 
-                    <!-- Upload Status -->
-
-                    <div id="uploadStatus"
-                         class="status-message">
-                    </div>
-
-
-                    <!-- Current Document -->
-
-                    <div id="documentInfo"
-                         class="document-info hidden">
-
-                        <div class="document-check">
-                            ✓
-                        </div>
-
+                    <div id="documentInfo" class="document-info hidden">
+                        <div class="document-check">✓</div>
                         <div>
-
-                            <strong>
-                                Document ready
-                            </strong>
-
-                            <span id="documentDetails">
-                                Ready for questions
-                            </span>
-
+                            <strong>Document ready</strong>
+                            <span id="documentDetails">Ready for questions</span>
                         </div>
-
                     </div>
-
                 </section>
 
-
-
-                <!-- =================================
-                     Ask Question Card
-                     ================================= -->
-
+                <!-- ASK QUESTIONS -->
                 <section class="glass-card question-card">
-
                     <div class="card-heading">
-
-                        <div class="heading-icon blue">
-                            ?
-                        </div>
-
+                        <div class="heading-icon blue">?</div>
                         <div>
-
-                            <h2>
-                                Ask a Question
-                            </h2>
-
-                            <p>
-                                Ask anything about your uploaded document.
-                            </p>
-
+                            <h2>Ask a Question</h2>
+                            <p>Ask anything about your uploaded document.</p>
                         </div>
-
                     </div>
-
-
-                    <!-- Question Input -->
 
                     <div class="question-wrapper">
-
-                        <textarea
-                            id="question"
-                            rows="6"
-                            maxlength="1000"
-                            placeholder="e.g. What are the main findings of this document?">
-                        </textarea>
-
-
+                        <textarea id="question" rows="6" maxlength="1000"
+                                  placeholder="e.g. What are the main findings of this document?"></textarea>
                         <div class="question-footer">
-
-                            <span id="characterCount">
-                                0 / 1000
-                            </span>
-
-                            <span>
-                                Ctrl + Enter to ask
-                            </span>
-
+                            <span id="characterCount">0 / 1000</span>
+                            <span>Ctrl + Enter to ask</span>
                         </div>
-
                     </div>
-
-
-                    <!-- Example Questions -->
 
                     <div class="suggestions">
-
-                        <p>
-                            Try asking
-                        </p>
-
+                        <p>Try asking</p>
                         <div class="suggestion-list">
-
-                            <button
-                                class="suggestion-chip"
-                                type="button"
-                                data-question="What is this document about?">
-
+                            <button class="suggestion-chip" type="button"
+                                    data-question="What is this document about?">
                                 What is this document about?
-
                             </button>
-
-
-                            <button
-                                class="suggestion-chip"
-                                type="button"
-                                data-question="Summarize the main points of this document.">
-
+                            <button class="suggestion-chip" type="button"
+                                    data-question="Summarize the main points of this document.">
                                 Summarize the main points
-
                             </button>
-
-
-                            <button
-                                class="suggestion-chip"
-                                type="button"
-                                data-question="What are the key findings or conclusions?">
-
+                            <button class="suggestion-chip" type="button"
+                                    data-question="What are the key findings or conclusions?">
                                 Key findings
-
                             </button>
-
                         </div>
-
                     </div>
 
-
-                    <!-- Ask Button -->
-
-                    <button
-                        id="askButton"
-                        class="primary-button full-button"
-                        type="button"
-                        disabled>
-
-                        <span>
-                            ✦
-                        </span>
-
-                        Ask AI
-
+                    <button id="askButton" class="primary-button full-button"
+                            type="button" disabled>
+                        <span>✦</span> Ask AI
                     </button>
 
-
-                    <div id="answerStatus"
-                         class="status-message">
-                    </div>
-
+                    <div id="answerStatus" class="status-message"
+                         role="status" aria-live="polite"></div>
                 </section>
-
             </div>
 
-
-
-            <!-- =================================
-                 Answer Section
-                 ================================= -->
-
-            <section id="answerCard"
-                     class="glass-card answer-card">
-
+            <!-- AI ANSWER -->
+            <section id="answerCard" class="glass-card answer-card">
                 <div class="answer-header">
-
                     <div class="card-heading">
-
-                        <div class="heading-icon green">
-                            ✦
-                        </div>
-
+                        <div class="heading-icon green">✦</div>
                         <div>
-
-                            <h2>
-                                AI Answer
-                            </h2>
-
-                            <p>
-                                Generated from your uploaded document.
-                            </p>
-
+                            <h2>AI Answer</h2>
+                            <p>Generated from your uploaded document.</p>
                         </div>
-
                     </div>
-
-
-                    <button
-                        id="copyButton"
-                        class="copy-button"
-                        type="button"
-                        title="Copy answer"
-                        disabled>
-
+                    <button id="copyButton" class="copy-button"
+                            type="button" title="Copy answer" disabled>
                         ⧉ Copy
-
                     </button>
-
                 </div>
 
-
-                <!-- Empty Answer -->
-
-                <div id="emptyAnswer"
-                     class="empty-answer">
-
-                    <div class="empty-icon">
-                        ✦
-                    </div>
-
-                    <h3>
-                        Your answer will appear here
-                    </h3>
-
-                    <p>
-                        Upload a document and ask a question
-                        to get started.
-                    </p>
-
+                <div id="emptyAnswer" class="empty-answer">
+                    <div class="empty-icon">✦</div>
+                    <h3>Your answer will appear here</h3>
+                    <p>Upload a document and ask a question to get started.</p>
                 </div>
 
-
-                <!-- Loading Answer -->
-
-                <div id="answerLoading"
-                     class="answer-loading hidden">
-
-                    <div class="loading-orb">
-                        ✦
-                    </div>
-
+                <div id="answerLoading" class="answer-loading hidden">
+                    <div class="loading-orb">✦</div>
                     <div>
-
-                        <strong>
-                            Thinking...
-                        </strong>
-
-                        <span>
-                            Searching relevant document content
-                        </span>
-
+                        <strong>Thinking...</strong>
+                        <span>Searching relevant document content</span>
                     </div>
-
                 </div>
 
-
-                <!-- Actual Answer -->
-
-                <div id="answerContent"
-                     class="answer-content hidden">
-
-                    <div class="answer-badge">
-                        AI GENERATED
-                    </div>
-
-                    <div id="answer">
-                    </div>
-
-                    <div id="source"
-                         class="source-info">
-                    </div>
-
+                <div id="answerContent" class="answer-content hidden">
+                    <div class="answer-badge">AI GENERATED</div>
+                    <div id="answer"></div>
+                    <div id="source" class="source-info"></div>
                 </div>
-
             </section>
 
-
-
-            <!-- =================================
-                 Footer
-                 ================================= -->
-
             <footer class="footer">
-
-                <span>
-                    DocuMind AI
-                </span>
-
-                <span>
-                    •
-                </span>
-
-                <span>
-                    RAG-powered document intelligence
-                </span>
-
-                <span>
-                    •
-                </span>
-
-                <span>
-                    PDF
-                </span>
-
+                <span>DocuMind AI</span><span>•</span>
+                <span>RAG-powered document intelligence</span><span>•</span>
+                <span>PDF</span>
             </footer>
-
         </main>
-
     </div>
 
-
-    <!-- =========================================
-         JavaScript
-         ========================================= -->
-
     <script src="{{ url_for('static', filename='script.js') }}"></script>
-
 </body>
-
 </html>
-
