@@ -42,3 +42,6 @@ htmlcov/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
+
+# Uploaded PDFs and user documents
+uploads/

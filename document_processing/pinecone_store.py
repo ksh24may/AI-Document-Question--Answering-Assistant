@@ -1,4 +1,3 @@
-
 import os
 import hashlib
 
@@ -59,15 +58,29 @@ class PineconeVectorStore:
         if not valid_chunks:
             return 0
 
+        # Validate chunk IDs and page numbers before embedding.
         for chunk in valid_chunks:
             if "chunk_id" not in chunk:
                 raise ValueError("Every chunk must have a chunk_id")
+
+            page = chunk.get("page", 1)
+
+            if (
+                not isinstance(page, int)
+                or isinstance(page, bool)
+                or page < 1
+            ):
+                raise ValueError(
+                    "Chunk page must be a positive integer"
+                )
 
         texts = [chunk["text"] for chunk in valid_chunks]
         embeddings = generate_embeddings(texts)
 
         if len(embeddings) != len(valid_chunks):
-            raise ValueError("Embedding count must match chunk count")
+            raise ValueError(
+                "Embedding count must match chunk count"
+            )
 
         vectors = []
 
@@ -79,12 +92,16 @@ class PineconeVectorStore:
                 "document_id": str(document_id),
                 "chunk_id": chunk_id,
                 "text": chunk["text"],
-                "document": str(chunk.get("document", document_id)),
+                "document": str(
+                    chunk.get("document", document_id)
+                ),
                 "page": int(chunk.get("page", 1)),
             }
 
             vectors.append({
-                "id": self._vector_id(user_id, document_id, chunk_id),
+                "id": self._vector_id(
+                    user_id, document_id, chunk_id
+                ),
                 "values": self._to_list(embedding),
                 "metadata": metadata,
             })
@@ -112,15 +129,22 @@ class PineconeVectorStore:
             or isinstance(top_k, bool)
             or top_k < 1
         ):
-            raise ValueError("top_k must be a positive integer")
+            raise ValueError(
+                "top_k must be a positive integer"
+            )
+
+        if document_id is not None and not document_id:
+            raise ValueError("document_id cannot be empty")
 
         query_embedding = generate_embeddings([query])[0]
         query_values = self._to_list(query_embedding)
 
+        # Always restrict retrieval to the requesting user.
         metadata_filter = {
             "user_id": {"$eq": str(user_id)}
         }
 
+        # Optionally restrict retrieval to one document.
         if document_id is not None:
             metadata_filter["document_id"] = {
                 "$eq": str(document_id)
