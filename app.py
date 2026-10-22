@@ -1,4 +1,6 @@
+
 import os
+import json
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,7 +59,10 @@ def allowed_file(filename):
 
 
 def get_owned_conversation(conversation_id, user_id):
-    if not isinstance(conversation_id, str) or not ObjectId.is_valid(conversation_id):
+    if (
+        not isinstance(conversation_id, str)
+        or not ObjectId.is_valid(conversation_id)
+    ):
         return None
 
     return conversations.find_one({
@@ -68,6 +73,7 @@ def get_owned_conversation(conversation_id, user_id):
 
 def get_safe_pdf_path(conversation, user_id):
     document = conversation.get("document")
+
     if not document or not document.get("path"):
         return None
 
@@ -86,8 +92,10 @@ def build_vector_store(pdf_path, source_filename=None):
 
     if not pdf_path.is_relative_to(UPLOAD_FOLDER):
         raise ValueError("Invalid PDF path.")
+
     if not pdf_path.is_file():
         raise FileNotFoundError("The PDF file could not be found.")
+
     if pdf_path.stat().st_size > MAX_FILE_SIZE:
         raise ValueError("PDF exceeds the 20 MB limit.")
 
@@ -95,24 +103,36 @@ def build_vector_store(pdf_path, source_filename=None):
         with fitz.open(str(pdf_path)) as pdf:
             page_count = len(pdf)
     except Exception as exc:
-        raise ValueError("The uploaded file is not a valid or readable PDF.") from exc
+        raise ValueError(
+            "The uploaded file is not a valid or readable PDF."
+        ) from exc
 
     if page_count == 0:
         raise ValueError("The PDF contains no pages.")
+
     if page_count > MAX_PDF_PAGES:
         raise ValueError("PDF exceeds the 50-page limit.")
 
     chunks = process_pdf(str(pdf_path))
+
     if not chunks:
         raise ValueError("No readable text found in PDF.")
 
     # Keep the original uploaded filename in source metadata.
     display_name = source_filename or pdf_path.name
+
     for chunk in chunks:
         chunk["document"] = display_name
 
-    embeddings = generate_embeddings([chunk["text"] for chunk in chunks])
-    embeddings = embeddings.tolist() if hasattr(embeddings, "tolist") else embeddings
+    embeddings = generate_embeddings(
+        [chunk["text"] for chunk in chunks]
+    )
+
+    embeddings = (
+        embeddings.tolist()
+        if hasattr(embeddings, "tolist")
+        else embeddings
+    )
 
     store = VectorStore(dimension=EMBEDDING_DIMENSION)
     store.add(embeddings, chunks)
@@ -127,10 +147,12 @@ def load_conversation_store(conversation, user_id):
         return None
 
     cached_store = conversation_vector_stores.get(conversation_id)
+
     if cached_store is not None:
         return cached_store
 
     pdf_path = get_safe_pdf_path(conversation, user_id)
+
     if pdf_path is None:
         return None
 
@@ -145,10 +167,12 @@ def load_conversation_store(conversation, user_id):
 
     conversations.update_one(
         {"_id": conversation["_id"], "user_id": user_id},
-        {"$set": {
-            "document.pages": page_count,
-            "document.chunks": chunk_count,
-        }},
+        {
+            "$set": {
+                "document.pages": page_count,
+                "document.chunks": chunk_count,
+            }
+        },
     )
 
     return store
@@ -171,7 +195,11 @@ def health():
 @login_required
 def get_document_status(conversation_id):
     user_id = session["user_id"]
-    conversation = get_owned_conversation(conversation_id, user_id)
+
+    conversation = get_owned_conversation(
+        conversation_id,
+        user_id
+    )
 
     if not conversation:
         return jsonify({
@@ -184,10 +212,13 @@ def get_document_status(conversation_id):
     if document:
         try:
             pdf_path = get_safe_pdf_path(conversation, user_id)
+
             if pdf_path is None or not pdf_path.is_file():
                 document = None
+
         except ValueError:
             app.logger.exception("Invalid saved PDF path")
+
             return jsonify({
                 "success": False,
                 "error": "Invalid saved PDF path.",
@@ -240,7 +271,11 @@ def upload_document():
         }), 400
 
     conversation_id = request.form.get("conversation_id", "")
-    conversation = get_owned_conversation(conversation_id, user_id)
+
+    conversation = get_owned_conversation(
+        conversation_id,
+        user_id
+    )
 
     if not conversation:
         return jsonify({
@@ -294,8 +329,10 @@ def upload_document():
         # Move the previous PDF to a backup before installing the new one.
         if pdf_path.exists():
             backup_path = user_folder / f".{conversation_id}.backup.pdf"
+
             if backup_path.exists():
                 backup_path.unlink()
+
             os.replace(str(pdf_path), str(backup_path))
 
         os.replace(str(temp_path), str(pdf_path))
@@ -304,10 +341,12 @@ def upload_document():
 
         result = conversations.update_one(
             {"_id": conversation["_id"], "user_id": user_id},
-            {"$set": {
-                "document": document,
-                "updated_at": datetime.now(timezone.utc),
-            }},
+            {
+                "$set": {
+                    "document": document,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
         )
 
         if result.matched_count != 1:
@@ -358,7 +397,9 @@ def upload_document():
                 conversation_vector_stores.pop(conversation_id, None)
 
         except Exception:
-            app.logger.exception("Could not restore previous document state")
+            app.logger.exception(
+                "Could not restore previous document state"
+            )
 
         message = (
             str(error)
@@ -367,7 +408,9 @@ def upload_document():
         )
 
         status_code = (
-            400 if isinstance(error, (ValueError, FileNotFoundError)) else 500
+            400
+            if isinstance(error, (ValueError, FileNotFoundError))
+            else 500
         )
 
         return jsonify({
@@ -388,6 +431,7 @@ def ask_question():
 
     question_text = data.get("question", "")
     conversation_id = data.get("conversation_id", "")
+    learning_level = data.get("learning_level", "student")
 
     if not isinstance(question_text, str) or not question_text.strip():
         return jsonify({
@@ -395,7 +439,14 @@ def ask_question():
             "error": "A valid question is required.",
         }), 400
 
-    conversation = get_owned_conversation(conversation_id, user_id)
+    # Accept only the supported learning levels.
+    if learning_level not in ("beginner", "student", "expert"):
+        learning_level = "student"
+
+    conversation = get_owned_conversation(
+        conversation_id,
+        user_id
+    )
 
     if not conversation:
         return jsonify({
@@ -415,6 +466,7 @@ def ask_question():
         answer_text = RAGPipeline(store).answer(
             question_text.strip(),
             top_k=5,
+            learning_level=learning_level,
         )
 
         return jsonify({
@@ -423,10 +475,12 @@ def ask_question():
             "answer": answer_text,
             "filename": conversation["document"]["filename"],
             "conversation_id": conversation_id,
+            "learning_level": learning_level,
         })
 
     except FileNotFoundError:
         app.logger.exception("Saved PDF is missing")
+
         return jsonify({
             "success": False,
             "error": "Saved PDF is missing. Please upload it again.",
@@ -440,9 +494,115 @@ def ask_question():
 
     except Exception:
         app.logger.exception("Question answering failed")
+
         return jsonify({
             "success": False,
             "error": "Failed to generate an answer. Check the Flask terminal.",
+        }), 500
+
+
+@app.route(
+    "/api/conversations/<conversation_id>/insights",
+    methods=["POST"]
+)
+@login_required
+def get_document_insights(conversation_id):
+    user_id = session["user_id"]
+
+    conversation = get_owned_conversation(
+        conversation_id,
+        user_id
+    )
+
+    if not conversation:
+        return jsonify({
+            "success": False,
+            "error": "Conversation not found.",
+        }), 404
+
+    try:
+        store = load_conversation_store(conversation, user_id)
+
+        if store is None:
+            return jsonify({
+                "success": False,
+                "error": "Upload a PDF to this conversation first.",
+            }), 400
+
+        raw_insights = RAGPipeline(store).generate_insights(top_k=8)
+
+        # Remove optional Markdown code fences from the AI response.
+        cleaned = raw_insights.strip()
+
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[-1].strip()
+
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3].strip()
+
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:].strip()
+
+        insights = json.loads(cleaned)
+
+        if not isinstance(insights, dict):
+            raise ValueError("The AI returned an invalid insights response.")
+
+        summary = insights.get("summary", "")
+        key_takeaways = insights.get("key_takeaways", [])
+        important_terms = insights.get("important_terms", [])
+        major_findings = insights.get("major_findings", [])
+
+        if not isinstance(summary, str):
+            summary = str(summary)
+
+        if not isinstance(key_takeaways, list):
+            key_takeaways = []
+
+        if not isinstance(important_terms, list):
+            important_terms = []
+
+        if not isinstance(major_findings, list):
+            major_findings = []
+
+        return jsonify({
+            "success": True,
+            "summary": summary,
+            "key_takeaways": key_takeaways,
+            "important_terms": important_terms,
+            "major_findings": major_findings,
+        })
+
+    except (ValueError, json.JSONDecodeError):
+        app.logger.exception(
+            "Could not parse document insights response"
+        )
+
+        return jsonify({
+            "success": False,
+            "error": (
+                "The AI returned an invalid insights format. "
+                "Please try again."
+            ),
+        }), 500
+
+    except FileNotFoundError:
+        app.logger.exception("Saved PDF is missing")
+
+        return jsonify({
+            "success": False,
+            "error": "Saved PDF is missing. Please upload it again.",
+        }), 404
+
+    except Exception:
+        app.logger.exception("Document insights generation failed")
+
+        return jsonify({
+            "success": False,
+            "error": (
+                "Failed to generate document insights. "
+                "Check the Flask terminal."
+            ),
         }), 500
 
 
